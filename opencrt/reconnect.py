@@ -120,7 +120,7 @@ class ReconnectManager(QObject):
         if event.type == ConnectionEventType.MANUAL_DISCONNECT:
             self.mark_manual_disconnect(event.session_id)
             return
-        if event.type not in {ConnectionEventType.CLOSED, ConnectionEventType.ERROR, ConnectionEventType.TIMEOUT, ConnectionEventType.NETWORK_LOST, ConnectionEventType.SSH_DISCONNECT, ConnectionEventType.TELNET_DISCONNECT}:
+        if event.type not in {ConnectionEventType.CLOSED, ConnectionEventType.ERROR, ConnectionEventType.NETWORK_LOST, ConnectionEventType.SSH_DISCONNECT, ConnectionEventType.TELNET_DISCONNECT}:
             return
         if event.session_id in self._manual_disconnects or not self.policy.enabled:
             return

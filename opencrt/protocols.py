@@ -98,7 +98,6 @@ class SSHConnection(BaseConnection):
                         else:
                             time.sleep(0.02)
                     except socket.timeout:
-                        self.emit_event(ConnectionEventType.TIMEOUT, "ssh timeout")
                         continue
                 self.emit_event(ConnectionEventType.SSH_DISCONNECT, "channel closed")
                 self.closed("closed")
@@ -196,7 +195,6 @@ class TelnetConnection(BaseConnection):
                         if clean:
                             self.output(clean.decode("utf-8", errors="replace"))
                     except socket.timeout:
-                        self.emit_event(ConnectionEventType.TIMEOUT, "telnet timeout")
                         continue
                 self.emit_event(ConnectionEventType.TELNET_DISCONNECT, "socket closed")
                 self.closed("closed")
