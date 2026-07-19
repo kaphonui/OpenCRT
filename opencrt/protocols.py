@@ -73,6 +73,8 @@ class SSHConnection(BaseConnection):
                     "port": self.session.port,
                     "username": credentials.username or None,
                     "timeout": 12,
+                    "banner_timeout": 30,
+                    "auth_timeout": 30,
                     "look_for_keys": not bool(credentials.password),
                     "allow_agent": credentials.use_ssh_agent or not bool(credentials.password),
                 }
