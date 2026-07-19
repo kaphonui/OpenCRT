@@ -14,7 +14,7 @@ from .ansi_parser import ANSIParser
 from .clipboard import ClipboardEngine
 from .credential_vault import CredentialVault
 from .command_tools import HistoryManager
-from .reconnect import ConnectionEventBus, ConnectionEventType, KnownHostsManager, ReconnectManager
+from .reconnect import ConnectionEvent, ConnectionEventBus, ConnectionEventType, KnownHostsManager, ReconnectManager
 from .hyperlink import HyperlinkEngine
 from .keyboard_mapper import KeyboardAction, KeyboardMapper
 from .models import Session
@@ -356,8 +356,12 @@ class TerminalTab(QWidget):
         self.log_file = None
         self._connection_started_at: float | None = None
         self._cleaned_up = False
-        self.reconnect_manager.reconnect_requested.connect(self._on_reconnect_requested)
-        self.reconnect_manager.status_requested.connect(self._update_reconnect_status)
+        self.reconnect_manager.reconnect_requested.connect(
+            self._on_reconnect_requested, Qt.ConnectionType.QueuedConnection
+        )
+        self.reconnect_manager.status_requested.connect(
+            self._update_reconnect_status, Qt.ConnectionType.QueuedConnection
+        )
 
         self.status = QLabel()
         reconnect = QPushButton("Reconnect")
@@ -411,8 +415,8 @@ class TerminalTab(QWidget):
         self.search_input.previous_requested.connect(self.search_previous)
         self.search_input.closed_requested.connect(self.hide_search_bar)
         self.terminal.display_refreshed.connect(self.sync_search_counter)
-        self.output_signal.connect(self.on_output)
-        self.closed_signal.connect(self.on_closed)
+        self.output_signal.connect(self.on_output, Qt.ConnectionType.QueuedConnection)
+        self.closed_signal.connect(self.on_closed, Qt.ConnectionType.QueuedConnection)
 
     def focus_terminal(self) -> None:
         self.terminal.setFocus(Qt.FocusReason.OtherFocusReason)

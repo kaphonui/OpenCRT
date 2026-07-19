@@ -243,7 +243,10 @@ class MainWindow(QMainWindow):
         item = self.tree.currentItem()
         if item is None:
             return None
-        return self.session_items.get(id(item))
+        session_id = item.data(0, SESSION_ROLE)
+        if not session_id:
+            return None
+        return self.session_by_id(session_id)
 
     def session_by_id(self, session_id: str | None) -> Session | None:
         if session_id is None:
