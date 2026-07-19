@@ -243,7 +243,10 @@ class MainWindow(QMainWindow):
         item = self.tree.currentItem()
         if item is None:
             return None
-        return self.session_items.get(id(item))
+        session_id = item.data(0, SESSION_ROLE)
+        if not session_id:
+            return None
+        return self.session_by_id(session_id)
 
     def session_by_id(self, session_id: str | None) -> Session | None:
         if session_id is None:
@@ -328,7 +331,7 @@ class MainWindow(QMainWindow):
                 session.password = ""
                 if self.session_service.get_session(session.id) is not None:
                     self.session_service.save_session(session)
-        tab = TerminalTab(session, self.log_dir, self, self.productivity, self.credential_vault, self.reconnect_manager, self.known_hosts, self.history_manager)
+        tab = TerminalTab(session, self.log_dir, self, self.productivity, self.credential_vault, self.known_hosts, self.history_manager)
         if self.quick_connect is not None:
             tab.action_requested.connect(self.quick_connect.handle_action)
         index = self.tabs.addTab(tab, session.name)

@@ -8,7 +8,7 @@ from typing import Callable
 
 from .credential_vault import CredentialResolver, CredentialVault
 from .models import Session
-from .reconnect import ConnectionEvent, ConnectionEventBus, ConnectionEventType, KnownHostsManager
+from .reconnect import KnownHostsManager
 
 
 class BaseConnection:
@@ -17,18 +17,11 @@ class BaseConnection:
         session: Session,
         output: Callable[[str], None],
         closed: Callable[[str], None],
-        *,
-        event_bus: ConnectionEventBus | None = None,
     ) -> None:
         self.session = session
         self.output = output
         self.closed = closed
         self.running = False
-        self.event_bus = event_bus
-
-    def emit_event(self, event_type: ConnectionEventType, reason: str = "", metadata: dict | None = None) -> None:
-        if self.event_bus is not None:
-            self.event_bus.emit_event(ConnectionEvent(self.session.id, event_type, self.session.protocol, reason, metadata))
 
     def connect(self) -> None:
         raise NotImplementedError
@@ -59,7 +52,6 @@ class SSHConnection(BaseConnection):
             try:
                 import paramiko
 
-                self.emit_event(ConnectionEventType.CONNECTING, "ssh")
                 self.output(f"[Đang SSH tới {self.session.host}:{self.session.port}...]\n")
                 self.client = paramiko.SSHClient()
                 self.client.load_system_host_keys()
@@ -73,6 +65,8 @@ class SSHConnection(BaseConnection):
                     "port": self.session.port,
                     "username": credentials.username or None,
                     "timeout": 12,
+                    "banner_timeout": 30,
+                    "auth_timeout": 30,
                     "look_for_keys": not bool(credentials.password),
                     "allow_agent": credentials.use_ssh_agent or not bool(credentials.password),
                 }
@@ -86,7 +80,6 @@ class SSHConnection(BaseConnection):
                 self.channel = self.client.invoke_shell(term="xterm-256color", width=140, height=40)
                 self.channel.settimeout(0.2)
                 self.running = True
-                self.emit_event(ConnectionEventType.CONNECTED, "ssh")
                 self.output("[Đã kết nối SSH]\n")
                 while self.running:
                     try:
@@ -98,13 +91,10 @@ class SSHConnection(BaseConnection):
                         else:
                             time.sleep(0.02)
                     except socket.timeout:
-                        self.emit_event(ConnectionEventType.TIMEOUT, "ssh timeout")
                         continue
-                self.emit_event(ConnectionEventType.SSH_DISCONNECT, "channel closed")
                 self.closed("closed")
             except Exception as exc:
                 self.output(f"\n[Lỗi SSH: {exc}]\n")
-                self.emit_event(ConnectionEventType.ERROR, str(exc))
                 self.closed("error")
             finally:
                 self.close()
@@ -178,12 +168,10 @@ class TelnetConnection(BaseConnection):
     def connect(self) -> None:
         def worker() -> None:
             try:
-                self.emit_event(ConnectionEventType.CONNECTING, "telnet")
                 self.output(f"[Đang Telnet tới {self.session.host}:{self.session.port}...]\n")
                 self.sock = socket.create_connection((self.session.host, self.session.port), timeout=12)
                 self.sock.settimeout(0.3)
                 self.running = True
-                self.emit_event(ConnectionEventType.CONNECTED, "telnet")
                 self.output("[Đã kết nối Telnet]\n")
                 while self.running:
                     try:
@@ -196,13 +184,10 @@ class TelnetConnection(BaseConnection):
                         if clean:
                             self.output(clean.decode("utf-8", errors="replace"))
                     except socket.timeout:
-                        self.emit_event(ConnectionEventType.TIMEOUT, "telnet timeout")
                         continue
-                self.emit_event(ConnectionEventType.TELNET_DISCONNECT, "socket closed")
                 self.closed("closed")
             except Exception as exc:
                 self.output(f"\n[Lỗi Telnet: {exc}]\n")
-                self.emit_event(ConnectionEventType.ERROR, str(exc))
                 self.closed("error")
             finally:
                 self.close()
@@ -230,7 +215,6 @@ class SerialConnection(BaseConnection):
         def worker() -> None:
             try:
                 import serial
-                self.emit_event(ConnectionEventType.CONNECTING, "serial")
                 self.output(f"[Đang mở {self.session.serial_port} @ {self.session.baudrate}...]\n")
                 self.serial = serial.Serial(
                     self.session.serial_port,
@@ -238,17 +222,14 @@ class SerialConnection(BaseConnection):
                     timeout=0.2,
                 )
                 self.running = True
-                self.emit_event(ConnectionEventType.CONNECTED, "serial")
                 self.output("[Đã kết nối Serial]\n")
                 while self.running:
                     data = self.serial.read(4096)
                     if data:
                         self.output(data.decode("utf-8", errors="replace"))
-                self.emit_event(ConnectionEventType.CLOSED, "serial closed")
                 self.closed("closed")
             except Exception as exc:
                 self.output(f"\n[Lỗi Serial: {exc}]\n")
-                self.emit_event(ConnectionEventType.ERROR, str(exc))
                 self.closed("error")
             finally:
                 self.close()

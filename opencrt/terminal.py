@@ -14,7 +14,6 @@ from .ansi_parser import ANSIParser
 from .clipboard import ClipboardEngine
 from .credential_vault import CredentialVault
 from .command_tools import HistoryManager
-from .reconnect import ConnectionEventBus, ConnectionEventType, KnownHostsManager, ReconnectManager
 from .hyperlink import HyperlinkEngine
 from .keyboard_mapper import KeyboardAction, KeyboardMapper
 from .models import Session
@@ -342,7 +341,7 @@ class TerminalTab(QWidget):
     closed_signal = Signal(str)
     action_requested = Signal(object, object)
 
-    def __init__(self, session: Session, log_dir: Path, parent=None, productivity: SessionProductivityPack | None = None, credential_vault: CredentialVault | None = None, reconnect_manager: ReconnectManager | None = None, known_hosts: KnownHostsManager | None = None, history_manager: HistoryManager | None = None) -> None:
+    def __init__(self, session: Session, log_dir: Path, parent=None, productivity: SessionProductivityPack | None = None, credential_vault: CredentialVault | None = None, known_hosts=None, history_manager: HistoryManager | None = None) -> None:
         super().__init__(parent)
         self.session = session
         self.log_dir = log_dir
@@ -350,14 +349,11 @@ class TerminalTab(QWidget):
         self.credential_vault = credential_vault
         self.known_hosts = known_hosts
         self.history_manager = history_manager
-        self.reconnect_manager = reconnect_manager or ReconnectManager(event_bus=ConnectionEventBus())
         self._pending_command = ""
         self.connection = None
         self.log_file = None
         self._connection_started_at: float | None = None
         self._cleaned_up = False
-        self.reconnect_manager.reconnect_requested.connect(self._on_reconnect_requested)
-        self.reconnect_manager.status_requested.connect(self._update_reconnect_status)
 
         self.status = QLabel()
         reconnect = QPushButton("Reconnect")
@@ -459,27 +455,23 @@ class TerminalTab(QWidget):
         self.disconnect()
         self._connection_started_at = time.monotonic()
         self.status.setText(f"CONNECTING  {self.session.name}")
-        if self.reconnect_manager is not None:
-            self.reconnect_manager.clear_manual_disconnect(self.session.id)
         safe = re.sub(r'[<>:"/\\|?*]+', "_", self.session.name)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_file = (self.log_dir / f"{safe}_{stamp}.log").open("a", encoding="utf-8", errors="replace")
         output = lambda text: self.output_signal.emit(text)
         closed = lambda reason: self.closed_signal.emit(reason)
-        event_bus = self.reconnect_manager.event_bus if self.reconnect_manager is not None else None
         if self.session.protocol == "ssh":
             self.connection = SSHConnection(
                 self.session,
                 output,
                 closed,
-                event_bus=event_bus,
                 credential_vault=self.credential_vault,
                 known_hosts=self.known_hosts,
             )
         elif self.session.protocol == "telnet":
-            self.connection = TelnetConnection(self.session, output, closed, event_bus=event_bus)
+            self.connection = TelnetConnection(self.session, output, closed)
         else:
-            self.connection = SerialConnection(self.session, output, closed, event_bus=event_bus)
+            self.connection = SerialConnection(self.session, output, closed)
         self.connection.connect()
 
     def send(self, text: str) -> None:
@@ -520,13 +512,6 @@ class TerminalTab(QWidget):
         if parent is not None and hasattr(parent, "show_command_panel"):
             parent.show_command_panel()
 
-    def _on_reconnect_requested(self, session_id: str) -> None:
-        if session_id == self.session.id and self.connection is not None:
-            self.connect()
-
-    def _update_reconnect_status(self, text: str) -> None:
-        self.status.setText(text)
-
     def on_closed(self, reason: str) -> None:
         self.status.setText(f"DISCONNECTED  {self.session.name}")
 
@@ -534,8 +519,6 @@ class TerminalTab(QWidget):
         if self.connection:
             self.connection.close()
             self.connection = None
-        if self.reconnect_manager is not None:
-            self.reconnect_manager.event_bus.emit_event(ConnectionEvent(self.session.id, ConnectionEventType.MANUAL_DISCONNECT, self.session.protocol, "manual disconnect"))
         if self.productivity is not None and self._connection_started_at is not None:
             duration = max(0.0, time.monotonic() - self._connection_started_at)
             self.productivity.record_connection(self.session, duration)
@@ -548,11 +531,3 @@ class TerminalTab(QWidget):
         if self._cleaned_up:
             return
         self._cleaned_up = True
-        try:
-            self.reconnect_manager.reconnect_requested.disconnect(self._on_reconnect_requested)
-        except (TypeError, RuntimeError):
-            pass
-        try:
-            self.reconnect_manager.status_requested.disconnect(self._update_reconnect_status)
-        except (TypeError, RuntimeError):
-            pass
