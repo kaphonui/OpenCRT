@@ -83,6 +83,8 @@ class MainWindow(QMainWindow):
         self.credential_vault = credential_vault
         self.reconnect_manager = reconnect_manager
         self.known_hosts = known_hosts
+        self.history_manager = history_manager
+        self.snippet_manager = snippet_manager
         self.filter_mode = "all"
         self.setWindowTitle("OpenCRT 0.3.0")
         self.resize(1360, 820)
